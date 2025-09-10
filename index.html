@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel Rotativo de Dashboards</title>
+  <meta http-equiv="Cache-Control" content="no-store" />
+
+  <style>
+    :root {
+      --bg: #000;
+      --text: #fff;
+      --muted: #9aa0a6;
+      --accent: #d9b300;
+      --fade-ms: 600;
+      --interval-ms: 600000; /* 10 minutos = 600.000 ms */
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      background: #000;
+    }
+
+    /* duas camadas para crossfade suave */
+    .frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      opacity: 0;
+      transition: opacity var(--fade-ms)ms ease;
+      background: #000;
+    }
+    .frame.active { opacity: 1; }
+
+    /* overlay discreto com info e relógio */
+    .hud {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      background: rgba(0,0,0,.55);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-size: 12px;
+      line-height: 1.2;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      pointer-events: none;
+      backdrop-filter: blur(3px);
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .muted { color: var(--muted); }
+
+    /* barra de progresso do ciclo atual */
+    .progress-wrap {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      background: rgba(255,255,255,.06);
+    }
+    .progress {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width linear;
+    }
+
+    /* instruções rápidas (apertar "i" para mostrar/ocultar) */
+    .help {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      max-width: 32ch;
+      background: rgba(0,0,0,.7);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      display: none;
+      backdrop-filter: blur(3px);
+    }
+    .help.show { display: block; }
+    .kbd {
+      display:inline-block; border:1px solid rgba(255,255,255,.25);
+      padding: 1px 6px; border-radius: 6px; font-weight: 600;
+      background: rgba(255,255,255,.06);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <iframe id="A" class="frame active" referrerpolicy="no-referrer" allowfullscreen></iframe>
+    <iframe id="B" class="frame" referrerpolicy="no-referrer" allowfullscreen></iframe>
+  </div>
+
+  <div class="hud" id="hud">
+    <div class="dot"></div>
+    <div id="hudText">Carregando…</div>
+    <div class="muted" id="clock"></div>
+  </div>
+
+  <div class="progress-wrap"><div class="progress" id="progress"></div></div>
+
+  <div class="help" id="help">
+    <div><strong>Controles</strong></div>
+    <div><span class="kbd">←</span> anterior &nbsp; <span class="kbd">→</span> próximo</div>
+    <div><span class="kbd">Espaço</span> pausar/retomar</div>
+    <div><span class="kbd">I</span> mostrar/ocultar ajuda</div>
+  </div>
+
+  <script>
+    /*** 1) EDITE AQUI AS SUAS URLs DE DASHBOARD ***/
+    const DASHBOARDS = [
+      // Ex.: Power BI (usar link de compartilhamento/publicação)
+      "https://app.powerbi.com/view?r=eyJrIjoiZWI4NjA0ZjEtYjhlOS00NjRlLThhNzMtMWE5YThkNTgxODZlIiwidCI6IjdlNDIzZGRiLWFiMDktNDVmMS05ZjgyLTkxYzhjODVhMzNkMCJ9",
+      // Ex.: outro dashboard (Grafana, Metabase, Superset, etc.)
+      "https://app.powerbi.com/view?r=eyJrIjoiOTExOTVmMmMtZWFiOC00OWMxLWFkOTMtYTAyMDZhOTdmNTM1IiwidCI6IjdlNDIzZGRiLWFiMDktNDVmMS05ZjgyLTkxYzhjODVhMzNkMCJ9",
+      // Adicione quantas quiser…
+      "https://app.powerbi.com/view?r=eyJrIjoiZjBhMDQ4MDAtNmJjMy00Y2MyLTlmOTgtODVmY2ExOTZjYzJhIiwidCI6IjdlNDIzZGRiLWFiMDktNDVmMS05ZjgyLTkxYzhjODVhMzNkMCJ9"
+    ];
+
+    /*** 2) CONFIGURAÇÕES ***/
+    const INTERVAL_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--interval-ms')) || 300000; // 5min
+    const FADE_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-ms')) || 600;
+    const CACHE_BUSTER = false; // true para adicionar ?t=timestamp e evitar cache agressivo
+    const START_INDEX = 0;       // por qual dashboard iniciar
+
+    /*** 3) LÓGICA DO ROTADOR ***/
+    const frameA = document.getElementById('A');
+    const frameB = document.getElementById('B');
+    const hudText = document.getElementById('hudText');
+    const clockEl = document.getElementById('clock');
+    const helpEl = document.getElementById('help');
+    const progressEl = document.getElementById('progress');
+
+    let current = Math.max(0, Math.min(START_INDEX, DASHBOARDS.length - 1));
+    let timer = null;
+    let running = true;
+    let activeIsA = true;
+
+    function fmtClock(d=new Date()){
+      const pad = (n)=> String(n).padStart(2,'0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function withCacheBuster(url){
+      if(!CACHE_BUSTER) return url;
+      const u = new URL(url, window.location.href);
+      u.searchParams.set('_t', Date.now());
+      return u.toString();
+    }
+
+    function setHud(index){
+      const total = DASHBOARDS.length;
+      hudText.textContent = `Dashboard ${index+1}/${total}`;
+    }
+
+    function updateClock(){
+      clockEl.textContent = fmtClock();
+    }
+
+    function setProgress(pct){ progressEl.style.width = `${pct}%`; }
+
+    function loadInto(iframe, index){
+      const url = withCacheBuster(DASHBOARDS[index]);
+      // Segurança comum de embutir: alguns domínios bloqueiam X-Frame-Options; isso precisa ser permitido na origem.
+      iframe.src = url;
+      iframe.title = `Dashboard ${index+1}`;
+    }
+
+    function crossfade(nextIndex){
+      const show = activeIsA ? frameB : frameA;
+      const hide = activeIsA ? frameA : frameB;
+
+      // Precarrega o próximo antes do fade
+      loadInto(show, nextIndex);
+
+      // Aguarda o carregamento mínimo para evitar “flash”
+      const kickIn = () => {
+        hide.classList.remove('active');
+        show.classList.add('active');
+        activeIsA = !activeIsA;
+      };
+
+      // Se o iframe dispara onload, fazemos o fade após o ready;
+      // caso contrário, seguimos com um pequeno delay.
+      let faded = false;
+      const onload = () => { if (faded) return; faded = true; kickIn(); };
+      show.onload = onload;
+
+      // Fallback se onload não disparar (alguns provedores bloqueiam eventos)
+      setTimeout(() => { if (!faded) kickIn(); }, 350);
+    }
+
+    function goTo(index){
+      current = (index + DASHBOARDS.length) % DASHBOARDS.length;
+      setHud(current);
+      crossfade(current);
+      resetProgress();
+    }
+
+    function next(){ goTo(current + 1); }
+    function prev(){ goTo(current - 1); }
+
+    function startTimer(){
+      stopTimer();
+      const startedAt = Date.now();
+      setProgress(0);
+
+      timer = setInterval(() => {
+        const elapsed = Date.now() - startedAt;
+        const pct = Math.min(100, (elapsed / INTERVAL_MS) * 100);
+        setProgress(pct);
+        if (elapsed >= INTERVAL_MS) {
+          next();
+        }
+      }, 250); // atualiza barra 4x/s
+      running = true;
+    }
+
+    function stopTimer(){
+      if (timer) clearInterval(timer);
+      timer = null;
+      running = false;
+    }
+
+    function toggleRun(){
+      if (running) { stopTimer(); }
+      else { startTimer(); }
+    }
+
+    function resetProgress(){
+      setProgress(0);
+      if (running) startTimer();
+    }
+
+    // Pausar quando a aba não estiver visível (economiza recursos)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopTimer();
+      else if (!running) startTimer();
+    });
+
+    // Controles de teclado
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') { next(); }
+      else if (e.key === 'ArrowLeft') { prev(); }
+      else if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); toggleRun(); }
+      else if (e.key.toLowerCase() === 'i') { helpEl.classList.toggle('show'); }
+    });
+
+    // Relógio
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Inicialização
+    (function init(){
+      if (!DASHBOARDS.length) {
+        hudText.textContent = "Nenhum dashboard configurado. Edite o array DASHBOARDS no código.";
+        return;
+      }
+      // Carrega o primeiro visível no frame ativo e o segundo no hidden para já deixar pronto
+      loadInto(frameA, current);
+      setHud(current);
+      // Precarrega o próximo se houver
+      if (DASHBOARDS.length > 1) {
+        loadInto(frameB, (current + 1) % DASHBOARDS.length);
+      }
+      startTimer();
+    })();
+  </script>
+</body>
+</html>
