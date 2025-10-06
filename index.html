@@ -132,13 +132,12 @@
       "https://app.powerbi.com/view?r=eyJrIjoiNmEyZjEyYzgtMmQ2OC00MDdlLWE1NWItMzhjZTkxOGUwOTY1IiwidCI6IjQwODYyZjk0LWRjZWYtNDI1Mi05ODJiLTU4MGEzZTZiYjVmYiJ9",
       // Ex.: outro dashboard (Marketing)
       "https://app.powerbi.com/view?r=eyJrIjoiNTBmNzc5N2UtZjFmNi00ZTliLTk1ODctOWI4YWYyNzhjN2Q2IiwidCI6IjQwODYyZjk0LWRjZWYtNDI1Mi05ODJiLTU4MGEzZTZiYjVmYiJ9",
-      // (Admin)
-      "https://app.powerbi.com/view?r=eyJrIjoiNmEyZjEyYzgtMmQ2OC00MDdlLWE1NWItMzhjZTkxOGUwOTY1IiwidCI6IjQwODYyZjk0LWRjZWYtNDI1Mi05ODJiLTU4MGEzZTZiYjVmYiJ9
-    "
-    ];
+      // (MKT TELA LTV)
+      "https://app.powerbi.com/view?r=eyJrIjoiNTBmNzc5N2UtZjFmNi00ZTliLTk1ODctOWI4YWYyNzhjN2Q2IiwidCI6IjQwODYyZjk0LWRjZWYtNDI1Mi05ODJiLTU4MGEzZTZiYjVmYiJ9&pageName=debb1fc600806c409a16"
+      ];
 
     /*** 2) CONFIGURAÇÕES ***/
-    const INTERVAL_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--interval-ms')) || 300000; // 5min
+    const INTERVAL_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--interval-ms')) || 180000; // 3min
     const FADE_MS = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fade-ms')) || 600;
     const CACHE_BUSTER = false; // true para adicionar ?t=timestamp e evitar cache agressivo
     const START_INDEX = 0;       // por qual dashboard iniciar
@@ -288,6 +287,7 @@
   </script>
 </body>
 </html>
+
 
 
 
